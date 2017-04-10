@@ -56,13 +56,13 @@ public:
      *
      *  @return         number of active connections
      */
-    virtual int8_t get_ap_num_connections() = 0;
+    virtual int get_ap_connection_count() = 0;
     
     /** Gets the max supported number of active connections
      *
      *  @return         maximum number of active connections
      */
-    virtual int8_t get_ap_max_num_connections() = 0;
+    virtual int get_ap_max_connection_count() = 0;
     
     /** Enable or disable DHCP on the network access point
      *
@@ -96,13 +96,13 @@ public:
      *
      *  @return         0 on success, negative error code on failure
      */
-    virtual nsapi_error_t start() = 0;
+    virtual nsapi_error_t ap_start() = 0;
 
     /** Stop the interface
      *
      *  @return         0 on success, or error code on failure
      */
-    virtual nsapi_error_t stop() = 0;
+    virtual nsapi_error_t ap_stop() = 0;
 
 };
 
