@@ -76,6 +76,7 @@ void lp_ticker_init(void)
         /* By HAL spec, ticker_init allows the ticker to keep counting and disables the
          * ticker interrupt. */
         lp_ticker_disable_interrupt();
+        lp_ticker_clear_interrupt();
         return;
     }
     ticker_inited = 1;
@@ -110,7 +111,7 @@ void lp_ticker_init(void)
 
     NVIC_DisableIRQ(TIMER_MODINIT.irq_n);
 
-    TIMER_EnableInt(timer_base);
+    TIMER_DisableInt(timer_base);
     wait_us((NU_US_PER_SEC / NU_TMRCLK_PER_SEC) * 3);
 
     TIMER_EnableWakeup(timer_base);
@@ -125,7 +126,23 @@ void lp_ticker_init(void)
 
 void lp_ticker_free(void)
 {
+    TIMER_T *timer_base = (TIMER_T *) NU_MODBASE(TIMER_MODINIT.modname);
+
+    /* Stop counting */
+    TIMER_Stop(timer_base);
+    wait_us((NU_US_PER_SEC / NU_TMRCLK_PER_SEC) * 3);
+
+    /* Wait for timer to stop counting and unset active flag */
+    while((timer_base->CTL & TIMER_CTL_ACTSTS_Msk));
+
+    /* Disable wakeup */
+    TIMER_DisableWakeup(timer_base);
+    wait_us((NU_US_PER_SEC / NU_TMRCLK_PER_SEC) * 3);
+
     /* Disable interrupt */
+    TIMER_DisableInt(timer_base);
+    wait_us((NU_US_PER_SEC / NU_TMRCLK_PER_SEC) * 3);
+
     NVIC_DisableIRQ(TIMER_MODINIT.irq_n);
 
     /* Disable IP clock */
@@ -168,9 +185,10 @@ void lp_ticker_set_interrupt(timestamp_t timestamp)
 
     /* NOTE: Rely on LPTICKER_DELAY_TICKS to be non-blocking. */
     timer_base->CMP = cmp_timer;
+    wait_us((NU_US_PER_SEC / NU_TMRCLK_PER_SEC) * 3);
 
-    /* We can call ticker_irq_handler now. */
-    NVIC_EnableIRQ(TIMER_MODINIT.irq_n);
+    TIMER_EnableInt(timer_base);
+    wait_us((NU_US_PER_SEC / NU_TMRCLK_PER_SEC) * 3);
 }
 
 void lp_ticker_disable_interrupt(void)
