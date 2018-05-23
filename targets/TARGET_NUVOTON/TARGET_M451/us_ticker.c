@@ -52,6 +52,7 @@ void us_ticker_init(void)
         /* By HAL spec, ticker_init allows the ticker to keep counting and disables the
          * ticker interrupt. */
         us_ticker_disable_interrupt();
+        us_ticker_clear_interrupt();
         return;
     }
     ticker_inited = 1;
@@ -82,7 +83,7 @@ void us_ticker_init(void)
 
     NVIC_DisableIRQ(TIMER_MODINIT.irq_n);
 
-    TIMER_EnableInt(timer_base);
+    TIMER_DisableInt(timer_base);
 
     TIMER_Start(timer_base);
     /* Wait for timer to start counting and raise active flag */
@@ -91,7 +92,15 @@ void us_ticker_init(void)
 
 void us_ticker_free(void)
 {
+    TIMER_T *timer_base = (TIMER_T *) NU_MODBASE(TIMER_MODINIT.modname);
+
+    /* Stop counting */
+    TIMER_Stop(timer_base);
+    /* Wait for timer to stop counting and unset active flag */
+    while((timer_base->CTL & TIMER_CTL_ACTSTS_Msk));
+
     /* Disable interrupt */
+    TIMER_DisableInt(timer_base);
     NVIC_DisableIRQ(TIMER_MODINIT.irq_n);
 
     /* Disable IP clock */
@@ -133,8 +142,7 @@ void us_ticker_set_interrupt(timestamp_t timestamp)
     cmp_timer = NU_CLAMP(cmp_timer, TMR_CMP_MIN, TMR_CMP_MAX);
     timer_base->CMP = cmp_timer;
 
-    /* We can call ticker_irq_handler now. */
-    NVIC_EnableIRQ(TIMER_MODINIT.irq_n);
+    TIMER_EnableInt(timer_base);
 }
 
 void us_ticker_disable_interrupt(void)
