@@ -269,6 +269,185 @@ class mbedToolchain:
 
         return False
 
+    def is_ignored(self, file_path):
+        """Check if file path is ignored by any .mbedignore thus far"""
+        return self._ignore_regex.match(normcase(file_path))
+
+    def add_ignore_patterns(self, root, base_path, patterns):
+        """Add a series of patterns to the ignored paths
+
+        Positional arguments:
+        root - the directory containing the ignore file
+        base_path - the location that the scan started from
+        patterns - the list of patterns we will ignore in the future
+        """
+        real_base = relpath(root, base_path)
+        if real_base == ".":
+            self.ignore_patterns.extend(normcase(p) for p in patterns)
+        else:
+            self.ignore_patterns.extend(normcase(join(real_base, pat)) for pat in patterns)
+        if self.ignore_patterns:
+            self._ignore_regex = re.compile("|".join(fnmatch.translate(p) for p in self.ignore_patterns))
+
+    # Create a Resources object from the path pointed to by *path* by either traversing a
+    # a directory structure, when *path* is a directory, or adding *path* to the resources,
+    # when *path* is a file.
+    # The parameter *base_path* is used to set the base_path attribute of the Resources
+    # object and the parameter *exclude_paths* is used by the directory traversal to
+    # exclude certain paths from the traversal.
+    def scan_resources(self, path, exclude_paths=None, base_path=None,
+                       collect_ignores=False):
+        self.progress("scan", path)
+
+        resources = Resources(path, collect_ignores=collect_ignores)
+        if not base_path:
+            if isfile(path):
+                base_path = dirname(path)
+            else:
+                base_path = path
+        resources.base_path = base_path
+
+        if isfile(path):
+            self._add_file(path, resources, base_path, exclude_paths=exclude_paths)
+        else:
+            self._add_dir(path, resources, base_path, exclude_paths=exclude_paths)
+        return resources
+
+    # A helper function for scan_resources. _add_dir traverses *path* (assumed to be a
+    # directory) and heeds the ".mbedignore" files along the way. _add_dir calls _add_file
+    # on every file it considers adding to the resources object.
+    def _add_dir(self, path, resources, base_path, exclude_paths=None):
+        """ os.walk(top[, topdown=True[, onerror=None[, followlinks=False]]])
+        When topdown is True, the caller can modify the dirnames list in-place
+        (perhaps using del or slice assignment), and walk() will only recurse into
+        the subdirectories whose names remain in dirnames; this can be used to prune
+        the search, impose a specific order of visiting, or even to inform walk()
+        about directories the caller creates or renames before it resumes walk()
+        again. Modifying dirnames when topdown is False is ineffective, because in
+        bottom-up mode the directories in dirnames are generated before dirpath
+        itself is generated.
+        """
+        labels = self.get_labels()
+        for root, dirs, files in walk(path, followlinks=True):
+            # Check if folder contains .mbedignore
+            if ".mbedignore" in files:
+                with open (join(root,".mbedignore"), "r") as f:
+                    lines=f.readlines()
+                    lines = [l.strip() for l in lines] # Strip whitespaces
+                    lines = [l for l in lines if l != ""] # Strip empty lines
+                    lines = [l for l in lines if not re.match("^#",l)] # Strip comment lines
+                    # Append root path to glob patterns and append patterns to ignore_patterns
+                    self.add_ignore_patterns(root, base_path, lines)
+
+            # Skip the whole folder if ignored, e.g. .mbedignore containing '*'
+            root_path =join(relpath(root, base_path))
+            if  (self.is_ignored(join(root_path,"")) or
+                 self.build_dir == root_path):
+                resources.ignore_dir(root_path)
+                dirs[:] = []
+                continue
+
+            for d in copy(dirs):
+                dir_path = join(root, d)
+                # Add internal repo folders/files. This is needed for exporters
+                if d == '.hg' or d == '.git':
+                    resources.repo_dirs.append(dir_path)
+
+                if ((d.startswith('.') or d in self.legacy_ignore_dirs) or
+                    # Ignore targets that do not match the TARGET in extra_labels list
+                    (d.startswith('TARGET_') and d[7:] not in labels['TARGET']) or
+                    # Ignore toolchain that do not match the current TOOLCHAIN
+                    (d.startswith('TOOLCHAIN_') and d[10:] not in labels['TOOLCHAIN']) or
+                    # Ignore .mbedignore files
+                    self.is_ignored(join(relpath(root, base_path), d,"")) or
+                    # Ignore TESTS dir
+                    (d == 'TESTS')):
+                        resources.ignore_dir(dir_path)
+                        dirs.remove(d)
+                elif d.startswith('FEATURE_'):
+                    # Recursively scan features but ignore them in the current scan.
+                    # These are dynamically added by the config system if the conditions are matched
+                    def closure (dir_path=dir_path, base_path=base_path):
+                        return self.scan_resources(dir_path, base_path=base_path,
+                                                   collect_ignores=resources.collect_ignores)
+                    resources.features.add_lazy(d[8:], closure)
+                    resources.ignore_dir(dir_path)
+                    dirs.remove(d)
+                elif exclude_paths:
+                    for exclude_path in exclude_paths:
+                        rel_path = relpath(dir_path, exclude_path)
+                        if not (rel_path.startswith('..')):
+                            resources.ignore_dir(dir_path)
+                            dirs.remove(d)
+                            break
+
+            # Add root to include paths
+            root = root.rstrip("/")
+            resources.inc_dirs.append(root)
+            resources.file_basepath[root] = base_path
+
+            for file in files:
+                file_path = join(root, file)
+                self._add_file(file_path, resources, base_path)
+
+    # A helper function for both scan_resources and _add_dir. _add_file adds one file
+    # (*file_path*) to the resources object based on the file type.
+    def _add_file(self, file_path, resources, base_path, exclude_paths=None):
+
+        if  (self.is_ignored(relpath(file_path, base_path)) or
+             basename(file_path).startswith(".")):
+            resources.ignore_dir(relpath(file_path, base_path))
+            return
+
+        resources.file_basepath[file_path] = base_path
+        _, ext = splitext(file_path)
+        ext = ext.lower()
+
+        if   ext == '.s':
+            resources.s_sources.append(file_path)
+
+        elif ext == '.c':
+            resources.c_sources.append(file_path)
+
+        elif ext == '.cpp':
+            resources.cpp_sources.append(file_path)
+
+        elif ext == '.h' or ext == '.hpp':
+            resources.headers.append(file_path)
+
+        elif ext == '.o':
+            resources.objects.append(file_path)
+
+        elif ext == self.LIBRARY_EXT:
+            resources.libraries.append(file_path)
+            resources.lib_dirs.add(dirname(file_path))
+
+        elif ext == self.LINKER_EXT:
+            if resources.linker_script is not None:
+                self.notify.info("Warning: Multiple linker scripts detected: %s -> %s" % (resources.linker_script, file_path))
+            resources.linker_script = file_path
+
+        elif ext == '.lib':
+            resources.lib_refs.append(file_path)
+
+        elif ext == '.bld':
+            resources.lib_builds.append(file_path)
+
+        elif basename(file_path) == '.hgignore':
+            resources.repo_files.append(file_path)
+
+        elif basename(file_path) == '.gitignore':
+            resources.repo_files.append(file_path)
+
+        elif ext == '.hex':
+            resources.hex_files.append(file_path)
+
+        elif ext == '.bin':
+            resources.bin_files.append(file_path)
+
+        elif ext == '.json':
+            resources.json_files.append(file_path)
+
 
     def scan_repository(self, path):
         resources = []
