@@ -19,9 +19,7 @@ import json
 from argparse import ArgumentParser
 from copy import deepcopy
 from collections import defaultdict
-from prettytable import PrettyTable, HEADER
-from jinja2 import FileSystemLoader, StrictUndefined
-from jinja2.environment import Environment
+from prettytable import PrettyTable
 
 from tools.utils import (argparse_filestring_type, argparse_lowercase_hyphen_type,
                          argparse_uppercase_type)
@@ -774,11 +772,6 @@ class MemapParser(object):
         for mod in self.modules.values():
             for k in self.sections:
                 self.subtotal[k] += mod[k]
-                self.subtotal[k + '-delta'] += mod[k]
-        if self.old_modules:
-            for mod in self.old_modules.values():
-                for k in self.sections:
-                    self.subtotal[k + '-delta'] -= mod[k]
 
         self.mem_summary = {
             'static_ram': self.subtotal['.data'] + self.subtotal['.bss'],
@@ -795,8 +788,7 @@ class MemapParser(object):
                 self.mem_report.append({
                     "module": name,
                     "size":{
-                        k: sizes.get(k, 0) for k in (self.print_sections +
-                                                     self.delta_sections)
+                        k: sizes.get(k, 0) for k in self.print_sections
                     }
                 })
 
