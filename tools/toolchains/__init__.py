@@ -409,10 +409,10 @@ class mbedToolchain:
         elif ext == '.c':
             resources.c_sources.append(file_path)
 
-        elif ext == '.cpp':
+        elif ext == '.cpp' or ext == '.cc':
             resources.cpp_sources.append(file_path)
 
-        elif ext == '.h' or ext == '.hpp':
+        elif ext == '.h' or ext == '.hpp' or ext == '.hh':
             resources.headers.append(file_path)
 
         elif ext == '.o':
