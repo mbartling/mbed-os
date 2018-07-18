@@ -321,7 +321,7 @@ uint32_t Thread::max_stack() const
 #if defined(MBED_OS_BACKEND_RTX5)
         mbed_rtos_storage_thread_t *thread = (mbed_rtos_storage_thread_t *)_tid;
         uint32_t high_mark = 0;
-        while ((((uint32_t *)(thread->stack_mem))[high_mark] == osRtxStackMagicWord) || (((uint32_t *)(thread->stack_mem))[high_mark] == osRtxStackFillPattern)) {
+        while ((((uint32_t *)(thread->stack_mem))[high_mark] == osRtxStackMagicWord) || (((uint32_t *)(thread->stack_mem))[high_mark] == osRtxStackFillPattern))
             high_mark++;
         }
         size = thread->stack_size - (high_mark * sizeof(uint32_t));
