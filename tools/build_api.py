@@ -886,7 +886,6 @@ def build_lib(lib_id, target, toolchain_name, clean=False, macros=None,
         # Let Exception propagate
         raise
 
-
 # A number of compiled files need to be copied as objects as the linker
 # will not search for weak symbol overrides in archives. These are:
 #   - mbed_retarget.o: to make sure that the C standard lib symbols get
@@ -905,7 +904,6 @@ SEPARATE_NAMES = [
     'mbed_main.o',
     'mbed_sdk_boot.o',
 ]
-
 
 def build_mbed_libs(target, toolchain_name, clean=False, macros=None,
                     notify=None, jobs=1, report=None, properties=None,
