@@ -26,7 +26,7 @@ static inline uint32_t align_down(bd_size_t val, bd_size_t size)
 }
 
 BufferedBlockDevice::BufferedBlockDevice(BlockDevice *bd)
-    : _bd(bd), _bd_program_size(0), _curr_aligned_addr(0), _flushed(true), _cache(0), _init_ref_count(0), _is_initialized(false)
+    : _bd(bd), _bd_program_size(0), _curr_aligned_addr(0), _flushed(true), _cache(0), _init_ref_count(0)
 {
 }
 
@@ -63,10 +63,6 @@ int BufferedBlockDevice::init()
 
 int BufferedBlockDevice::deinit()
 {
-    if (!_is_initialized) {
-        return BD_ERROR_OK;
-    }
-
     uint32_t val = core_util_atomic_decr_u32(&_init_ref_count, 1);
 
     if (val) {

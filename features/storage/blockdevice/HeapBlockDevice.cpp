@@ -20,14 +20,14 @@
 
 HeapBlockDevice::HeapBlockDevice(bd_size_t size, bd_size_t block)
     : _read_size(block), _program_size(block), _erase_size(block)
-    , _count(size / block), _blocks(0), _init_ref_count(0), _is_initialized(false)
+    , _count(size / block), _blocks(0), _init_ref_count(0)
 {
     MBED_ASSERT(_count * _erase_size == size);
 }
 
 HeapBlockDevice::HeapBlockDevice(bd_size_t size, bd_size_t read, bd_size_t program, bd_size_t erase)
     : _read_size(read), _program_size(program), _erase_size(erase)
-    , _count(size / erase), _blocks(0), _init_ref_count(0), _is_initialized(false)
+    , _count(size / erase), _blocks(0), _init_ref_count(0)
 {
     MBED_ASSERT(_count * _erase_size == size);
 }
@@ -65,10 +65,6 @@ int HeapBlockDevice::init()
 
 int HeapBlockDevice::deinit()
 {
-    if (!_is_initialized) {
-        return BD_ERROR_OK;
-    }
-
     uint32_t val = core_util_atomic_decr_u32(&_init_ref_count, 1);
 
     if (val) {

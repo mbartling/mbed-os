@@ -20,7 +20,7 @@
 
 
 ExhaustibleBlockDevice::ExhaustibleBlockDevice(BlockDevice *bd, uint32_t erase_cycles)
-    : _bd(bd), _erase_array(NULL), _erase_cycles(erase_cycles), _init_ref_count(0), _is_initialized(false)
+    : _bd(bd), _erase_array(NULL), _erase_cycles(erase_cycles), _init_ref_count(0)
 {
 }
 
@@ -31,14 +31,13 @@ ExhaustibleBlockDevice::~ExhaustibleBlockDevice()
 
 int ExhaustibleBlockDevice::init()
 {
-    int err;
     uint32_t val = core_util_atomic_incr_u32(&_init_ref_count, 1);
 
     if (val != 1) {
         return BD_ERROR_OK;
     }
 
-    err = _bd->init();
+    int err = _bd->init();
     if (err) {
         goto fail;
     }
@@ -62,10 +61,6 @@ fail:
 
 int ExhaustibleBlockDevice::deinit()
 {
-    if (!_is_initialized) {
-        return BD_ERROR_OK;
-    }
-
     core_util_atomic_decr_u32(&_init_ref_count, 1);
 
     if (_init_ref_count) {

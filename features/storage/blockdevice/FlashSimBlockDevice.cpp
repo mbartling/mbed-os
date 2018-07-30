@@ -30,7 +30,7 @@ static inline uint32_t align_up(bd_size_t val, bd_size_t size)
 
 FlashSimBlockDevice::FlashSimBlockDevice(BlockDevice *bd, uint8_t erase_value) :
     _erase_value(erase_value), _blank_buf_size(0),
-    _blank_buf(0), _bd(bd), _init_ref_count(0), _is_initialized(false)
+    _blank_buf(0), _bd(bd), _init_ref_count(0)
 {
 }
 
@@ -42,16 +42,15 @@ FlashSimBlockDevice::~FlashSimBlockDevice()
 
 int FlashSimBlockDevice::init()
 {
-    int err;
     uint32_t val = core_util_atomic_incr_u32(&_init_ref_count, 1);
 
     if (val != 1) {
         return BD_ERROR_OK;
     }
 
-    err = _bd->init();
-    if (err) {
-        goto fail;
+    int ret = _bd->init();
+    if (ret) {
+        return ret;
     }
     _blank_buf_size = align_up(min_blank_buf_size, _bd->get_program_size());
     if (!_blank_buf) {
@@ -70,17 +69,12 @@ fail:
 
 int FlashSimBlockDevice::deinit()
 {
-    if (!_is_initialized) {
-        return BD_ERROR_OK;
-    }
-
     uint32_t val = core_util_atomic_decr_u32(&_init_ref_count, 1);
 
     if (val) {
         return BD_ERROR_OK;
     }
 
-    _is_initialized = false;
     return _bd->deinit();
 }
 

@@ -176,7 +176,6 @@ protected:
     bd_size_t _size;
     int _erase_value;
     uint32_t _init_ref_count;
-    bool _is_initialized;
 };
 
 

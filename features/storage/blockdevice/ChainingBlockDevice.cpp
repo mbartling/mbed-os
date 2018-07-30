@@ -21,7 +21,7 @@
 ChainingBlockDevice::ChainingBlockDevice(BlockDevice **bds, size_t bd_count)
     : _bds(bds), _bd_count(bd_count)
     , _read_size(0), _program_size(0), _erase_size(0), _size(0)
-    , _erase_value(-1), _init_ref_count(0), _is_initialized(false)
+    , _erase_value(-1), _init_ref_count(0)
 {
 }
 
@@ -32,7 +32,6 @@ static bool is_aligned(uint64_t x, uint64_t alignment)
 
 int ChainingBlockDevice::init()
 {
-    int err;
     uint32_t val = core_util_atomic_incr_u32(&_init_ref_count, 1);
 
     if (val != 1) {
@@ -97,10 +96,6 @@ fail:
 
 int ChainingBlockDevice::deinit()
 {
-    if (!_is_initialized) {
-        return BD_ERROR_OK;
-    }
-
     uint32_t val = core_util_atomic_decr_u32(&_init_ref_count, 1);
 
     if (val) {
