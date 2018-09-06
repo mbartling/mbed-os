@@ -34,6 +34,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
+#include "platform/CircularBuffer.h"
 #ifndef SSIZE_MAX
 #define SSIZE_MAX INT_MAX
 #endif
@@ -204,6 +205,51 @@ short DirectSerial::poll(short events) const
     return revents;
 }
 #endif
+
+#ifndef CIRCULAR_BUFFER_FILE_DEPTH
+#define CIRCULAR_BUFFER_FILE_DEPTH 512
+#endif
+
+class CircularBufferFile : public FileHandle {
+public:
+    virtual ssize_t write(const void *buffer, size_t size);
+    virtual ssize_t read(void *buffer, size_t size);
+    virtual off_t seek(off_t offset, int whence = SEEK_SET)
+    {
+        return -ESPIPE;
+
+    }
+    virtual off_t size()
+    {
+        return _buffer.size();
+    }
+    virtual int isatty()
+    {
+        return false;
+    }
+    virtual int close()
+    {
+        return 0;
+    }
+private:
+    CircularBuffer<uint8_t, CIRCULAR_BUFFER_FILE_DEPTH> _buffer;
+}
+ssize_t CircularBufferFile::write(const void* buffer, size_t size) {
+    const uint8_t* b = static_cast<uint8_t*>(buffer);
+    for ( size_t i = 0; i < size; i++){
+        _buffer.push(b[i]);
+    }
+    return size % _buffer.size();
+
+}
+ssize_t CircularBufferFile::read(void *buffer, size_t size){
+    uint8_t* b = static_cast<uint8_t*>(buffer);
+    size_t i = 0;
+    while(i < size && _buffer.pop(b[i++]))
+    {
+    }
+    return i;
+}
 
 class Sink : public FileHandle {
 public:
