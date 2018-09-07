@@ -242,6 +242,7 @@ ssize_t CircularBufferFile::write(const void* buffer, size_t size) {
     return size % _buffer.size();
 
 }
+// Read is a forward iterator stream
 ssize_t CircularBufferFile::read(void *buffer, size_t size){
     uint8_t* b = static_cast<uint8_t*>(buffer);
     size_t i = 0;
@@ -314,6 +315,8 @@ static FileHandle *default_console()
 #  else
     static DirectSerial console(STDIO_UART_TX, STDIO_UART_RX, MBED_CONF_PLATFORM_STDIO_BAUD_RATE);
 #  endif
+# elif SOFT_FILE_BUFFER
+    static CircularBufferFile console;
 #else // DEVICE_SERIAL
     static Sink console;
 #endif
