@@ -269,17 +269,27 @@ void CircularBufferFile::api_unlock(void)
 
 ssize_t CircularBufferFile::write(const void* buffer, size_t size) {
     const char* b = static_cast<const char*>(buffer);
+    static char time_buffer[33];
+    time_t current_time = time(NULL);
+    int time_i;
     if (size == 0) {
         return 0;
     }
     api_lock();
+    itoa(current_time, time_buffer, 16);
+    _buffer.push('[');
+    for( time_i = 0; time_i < 33 && time_buffer[time_i] != '\0'; time_i++){
+        _buffer.push(time_buffer[time_i]);
+    }
+    _buffer.push(']');
+    _buffer.push(' '); // For readability
     for ( size_t i = 0; i < size; i++){
         _buffer.push(b[i]);
     }
     // Be safe and add another \0
-    _buffer.push(0);
+    //_buffer.push(0);
     api_unlock();
-    size_t data_written = size % CIRCULAR_BUFFER_FILE_DEPTH;
+    size_t data_written = (time_i + 3 + size) % CIRCULAR_BUFFER_FILE_DEPTH;
     return data_written != 0 ? (ssize_t) data_written : (ssize_t) - EAGAIN;
 
 }
@@ -301,8 +311,10 @@ ssize_t CircularBufferFile::read(void *buffer, size_t size){
         wait_ms(1);  // XXX todo - proper wait, WFE for non-rtos ?
         api_lock();
     }
-    while(i < size && _buffer.pop(b[i++]))
+    i = 0;
+    while(i < size && !_buffer.empty())
     {
+        _buffer.pop(b[i++]);
     }
     api_unlock();
     return i;
