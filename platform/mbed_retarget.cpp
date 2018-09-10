@@ -250,7 +250,7 @@ private:
     
     void wait_ms(uint32_t millisec);
 private:
-    CircularBuffer<uint8_t, CIRCULAR_BUFFER_FILE_DEPTH> _buffer;
+    CircularBuffer<char, CIRCULAR_BUFFER_FILE_DEPTH> _buffer;
     Callback<void()> _sigio_cb;
     PlatformMutex _mutex;
 };
@@ -267,7 +267,7 @@ void CircularBufferFile::api_unlock(void)
 }
 
 ssize_t CircularBufferFile::write(const void* buffer, size_t size) {
-    const uint8_t* b = static_cast<const uint8_t*>(buffer);
+    const char* b = static_cast<const char*>(buffer);
     if (size == 0) {
         return 0;
     }
@@ -275,14 +275,16 @@ ssize_t CircularBufferFile::write(const void* buffer, size_t size) {
     for ( size_t i = 0; i < size; i++){
         _buffer.push(b[i]);
     }
+    // Be safe and add another \0
+    _buffer.push(0);
     api_unlock();
-    size_t data_written = size % _buffer.size();
+    size_t data_written = size % CIRCULAR_BUFFER_FILE_DEPTH;
     return data_written != 0 ? (ssize_t) data_written : (ssize_t) - EAGAIN;
 
 }
 // Read is a forward iterator stream
 ssize_t CircularBufferFile::read(void *buffer, size_t size){
-    uint8_t* b = static_cast<uint8_t*>(buffer);
+    char* b = static_cast<char*>(buffer);
     size_t i = 0;
     if (size == 0) {
         return 0;
