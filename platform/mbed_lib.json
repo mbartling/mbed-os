@@ -64,7 +64,12 @@
         "max-error-filename-len": {
             "help": "Sets the maximum length of buffer used for capturing the filename in error context. This needs error-filename-capture-enabled feature.",
             "value": 16
+        },
+        "soft-file-buffer": {
+            "help": "Use circular file buffer instead of serial",
+            "value": false
         }
+
     },
     "target_overrides": {
         "EFM32": {
