@@ -267,10 +267,13 @@ void CircularBufferFile::api_unlock(void)
 }
 
 ssize_t CircularBufferFile::write(const void* buffer, size_t size) {
+    static volatile uint16_t seqno = 0;
     const char* b = static_cast<const char*>(buffer);
     static char time_buffer[33];
     time_t current_time = time(NULL);
+    uint16_t my_seqno = core_util_atomic_incr_u16(&seqno, 1);
     int time_i;
+    int seq_i;
     if (size == 0) {
         return 0;
     }
@@ -280,6 +283,13 @@ ssize_t CircularBufferFile::write(const void* buffer, size_t size) {
     for( time_i = 0; time_i < 33 && time_buffer[time_i] != '\0'; time_i++){
         _buffer.push(time_buffer[time_i]);
     }
+
+    _buffer.push(',');
+    itoa(my_seqno, time_buffer, 16);
+    for( seq_i = 0; seq_i < 17 && time_buffer[seq_i] != '\0'; seq_i++){
+        _buffer.push(time_buffer[seq_i]);
+    }
+
     _buffer.push(']');
     _buffer.push(' '); // For readability
     for ( size_t i = 0; i < size; i++){
@@ -288,7 +298,7 @@ ssize_t CircularBufferFile::write(const void* buffer, size_t size) {
     // Be safe and add another \0
     //_buffer.push(0);
     api_unlock();
-    size_t data_written = (time_i + 3 + size) % CIRCULAR_BUFFER_FILE_DEPTH;
+    size_t data_written = (time_i + seq_i+ 3 + size) % CIRCULAR_BUFFER_FILE_DEPTH;
     return data_written != 0 ? (ssize_t) data_written : (ssize_t) - EAGAIN;
 
 }
