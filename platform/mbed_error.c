@@ -17,10 +17,14 @@
 #include <stdarg.h>
 #include <string.h>
 #include "device.h"
+#include "platform/mbed_crash_data_info.h"
+#include "platform/mbed_retarget.h"
+#include "platform/mbed_crc_wrapper.h"
 #include "platform/mbed_critical.h"
 #include "platform/mbed_error.h"
 #include "platform/mbed_error_hist.h"
 #include "platform/mbed_interface.h"
+#include "platform/mbed_power_mgmt.h"
 #ifdef MBED_CONF_RTOS_PRESENT
 #include "rtx_os.h"
 #endif
@@ -54,6 +58,15 @@
 static uint8_t error_in_progress = 0;
 static int error_count = 0;
 static mbed_error_ctx first_error_ctx = {0};
+static void *crc_obj = NULL;
+
+#if defined(MBED_CONF_PLATFORM_CRASH_CAPTURE_ENABLED)
+    //Global for populating the context in exception handler
+    static mbed_error_ctx *report_error_ctx=(mbed_error_ctx *)((uint32_t)ERROR_CONTEXT_LOCATION);
+    static bool is_reboot_error_valid = false;
+        
+#endif
+
 static mbed_error_ctx last_error_ctx = {0};
 static mbed_error_hook_t error_hook = NULL;
 static void print_error_report(mbed_error_ctx *ctx, const char *);
@@ -73,7 +86,7 @@ static void mbed_halt_system(void)
     }
 }
 
-WEAK void error(const char *format, ...)
+MBED_WEAK void error(const char *format, ...)
 {
 
     // Prevent recursion if error is called again
@@ -169,6 +182,42 @@ static mbed_error_status_t handle_error(mbed_error_status_t error_status, unsign
     return MBED_SUCCESS;
 }
 
+WEAK void mbed_error_reboot_callback(mbed_error_ctx *error_context) {
+    //Dont do anything here, let application override this if required.
+}
+
+//Initialize Error handling system and report any errors detected on rebooted
+mbed_error_status_t mbed_error_initialize(void)
+{
+#if defined(MBED_CONF_PLATFORM_CRASH_CAPTURE_ENABLED)
+    crc_obj = create_mbed_crc();
+    if(crc_obj == NULL) {
+        return MBED_ERROR_INITIALIZATION_FAILED;
+    }
+
+    uint32_t crc_val = 0;
+    compute_mbed_crc( crc_obj, report_error_ctx, ((uint32_t)&(report_error_ctx->crc_error_ctx) - (uint32_t)report_error_ctx), &crc_val );
+    //Read report_error_ctx and check if CRC is correct for report_error_ctx
+    if(report_error_ctx->crc_error_ctx == crc_val) {
+        is_reboot_error_valid = true;
+#if defined(MBED_CONF_PLATFORM_REBOOT_CRASH_REPORT_ENABLED) && !defined(NDEBUG)        
+        //Report the error info
+        mbed_error_printf("\n== Your last reboot was triggered by an error, below is the error information ==");
+        ERROR_REPORT( report_error_ctx, "" );
+#endif  
+        //Call the mbed_error_reboot_callback, this enables applications to do some handling before we do the handling
+        mbed_error_reboot_callback(report_error_ctx);
+        if( report_error_ctx->error_reboot_count > MBED_CONF_PLATFORM_ERROR_REBOOT_MAX ) {
+            //We have rebooted more than enough, hold the system here.
+            mbed_error_printf("\n== Reboot count exceeded maximum, system halting ==\n");
+            mbed_halt_system();
+        }
+    }
+#endif
+    
+    return MBED_SUCCESS;
+}
+
 //Return the first error
 mbed_error_status_t mbed_get_first_error(void)
 {
@@ -196,8 +245,8 @@ mbed_error_status_t mbed_warning(mbed_error_status_t error_status, const char *e
     return handle_error(error_status, error_value, filename, line_number, MBED_CALLER_ADDR());
 }
 
-//Sets a fatal error, this function is marked WEAK to be able to override this for some tests
-WEAK mbed_error_status_t mbed_error(mbed_error_status_t error_status, const char *error_msg, unsigned int error_value, const char *filename, int line_number)
+//Sets a fatal error, this function is marked WEAK to be able to override this for testing purposes ONLY.
+MBED_WEAK mbed_error_status_t mbed_error(mbed_error_status_t error_status, const char *error_msg, unsigned int error_value, const char *filename, int line_number)
 {
     //set the error reported and then halt the system
     if (MBED_SUCCESS != handle_error(error_status, error_value, filename, line_number, MBED_CALLER_ADDR())) {
@@ -206,8 +255,26 @@ WEAK mbed_error_status_t mbed_error(mbed_error_status_t error_status, const char
 
     //On fatal errors print the error context/report
     ERROR_REPORT(&last_error_ctx, error_msg);
+    
+#if defined(MBED_CONF_PLATFORM_CRASH_CAPTURE_ENABLED)
+    uint32_t crc_val = 0;
+    compute_mbed_crc( crc_obj, report_error_ctx, ((uint32_t)&(report_error_ctx->crc_error_ctx) - (uint32_t)report_error_ctx), &crc_val );
+    //Read report_error_ctx and check if CRC is correct for report_error_ctx
+    if(report_error_ctx->crc_error_ctx == crc_val) {
+        uint32_t current_reboot_count = report_error_ctx->error_reboot_count;
+        last_error_ctx.error_reboot_count = current_reboot_count + 1;
+    } else {
+        last_error_ctx.error_reboot_count = 1;
+    }
+    //Update the struct with crc
+    compute_mbed_crc( crc_obj, &last_error_ctx, ((uint32_t)&(last_error_ctx.crc_error_ctx) - (uint32_t)&last_error_ctx), &last_error_ctx.crc_error_ctx );
+    memcpy(report_error_ctx, &last_error_ctx, sizeof(mbed_error_ctx));
+    //We need not call delete_mbed_crc(crc_obj) here as we are going to reset the system anyway, and calling delete may cause nested exception
+    system_reset();//do a system reset to get the system rebooted
+    while(1);
+#else    
     mbed_halt_system();
-
+#endif
     return MBED_ERROR_FAILED_OPERATION;
 }
 
@@ -215,12 +282,38 @@ WEAK mbed_error_status_t mbed_error(mbed_error_status_t error_status, const char
 mbed_error_status_t mbed_set_error_hook(mbed_error_hook_t error_hook_in)
 {
     //register the new hook/callback
-    if (error_hook_in != NULL)  {
+    if (error_hook_in != NULL) {
         error_hook = error_hook_in;
         return MBED_SUCCESS;
     }
 
     return MBED_ERROR_INVALID_ARGUMENT;
+}
+
+//Reset the reboot error context
+mbed_error_status_t mbed_reset_reboot_error_info()
+{
+#if defined(MBED_CONF_PLATFORM_CRASH_CAPTURE_ENABLED)    
+    memset(report_error_ctx, 0, sizeof(mbed_error_ctx) ); 
+#endif
+    return MBED_SUCCESS;    
+}
+
+//Retrieve the reboot error context
+mbed_error_status_t mbed_get_reboot_error_info(mbed_error_ctx *error_info)
+{
+    mbed_error_status_t status = MBED_ERROR_ITEM_NOT_FOUND;
+#if defined(MBED_CONF_PLATFORM_CRASH_CAPTURE_ENABLED)    
+    if (is_reboot_error_valid) {
+        if(error_info != NULL) {
+            memcpy(error_info, report_error_ctx, sizeof(mbed_error_ctx));
+            status = MBED_SUCCESS;
+        } else {
+            status = MBED_ERROR_INVALID_ARGUMENT;
+        }
+    }
+#endif    
+    return status;
 }
 
 //Retrieve the first error context from error log

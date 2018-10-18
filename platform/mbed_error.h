@@ -828,6 +828,8 @@ typedef struct _mbed_error_ctx {
     char error_filename[MBED_CONF_PLATFORM_MAX_ERROR_FILENAME_LEN];
     uint32_t error_line_number;
 #endif
+    int32_t error_reboot_count;//everytime we write this struct we increment this value by 1, irrespective of time between reboots. Note that the data itself might change, but everytime we reboot due to error we update this count by 1
+    uint32_t crc_error_ctx;//crc_error_ctx should always be the last member in this struct 
 } mbed_error_ctx;
 
 /** To generate a fatal compile-time error, you can use the pre-processor #error directive.
@@ -928,6 +930,20 @@ void error(const char *format, ...);
  *
  */
 typedef void (*mbed_error_hook_t)(const mbed_error_ctx *error_ctx);
+
+
+void mbed_error_reboot_callback(mbed_error_ctx *error_context);
+
+/**
+ * Initialize error handling system
+ */
+
+mbed_error_status_t mbed_error_initialize(void);
+
+/**
+ * Retrieve the reboot error context
+ */
+mbed_error_status_t mbed_get_reboot_error_info(mbed_error_ctx *error_info);
 
 /**
  * Call this function to set a system error/warning. This function will log the error status with the context info and return to caller.
