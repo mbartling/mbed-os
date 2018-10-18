@@ -829,7 +829,8 @@ typedef struct _mbed_error_ctx {
     uint32_t error_line_number;
 #endif
     int32_t error_reboot_count;//everytime we write this struct we increment this value by 1, irrespective of time between reboots. Note that the data itself might change, but everytime we reboot due to error we update this count by 1
-    uint32_t crc_error_ctx;//crc_error_ctx should always be the last member in this struct 
+    int32_t is_error_processed;//once this error is processed set this value to 1
+    uint32_t crc_error_ctx;//crc_error_ctx should always be the last member in this struct
 } mbed_error_ctx;
 
 /** To generate a fatal compile-time error, you can use the pre-processor #error directive.

@@ -19,14 +19,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef MBED_CRC_H
-#define MBED_CRC_H
+#ifndef MBED_CRC_WRAPPER_H
+#define MBED_CRC_WRAPPER_H
+
+#include "hal/crc_api.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
     
-void *create_mbed_crc(void);
+void *create_mbed_crc(crc_polynomial_t polynomial);
 
 int32_t compute_mbed_crc(void *crc_obj, void *data, int datalen, uint32_t *crc);
 

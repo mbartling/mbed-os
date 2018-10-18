@@ -190,7 +190,7 @@ WEAK void mbed_error_reboot_callback(mbed_error_ctx *error_context) {
 mbed_error_status_t mbed_error_initialize(void)
 {
 #if defined(MBED_CONF_PLATFORM_CRASH_CAPTURE_ENABLED)
-    crc_obj = create_mbed_crc();
+    crc_obj = create_mbed_crc(POLY_32BIT_REV_ANSI);
     if(crc_obj == NULL) {
         return MBED_ERROR_INITIALIZATION_FAILED;
     }
@@ -198,20 +198,23 @@ mbed_error_status_t mbed_error_initialize(void)
     uint32_t crc_val = 0;
     compute_mbed_crc( crc_obj, report_error_ctx, ((uint32_t)&(report_error_ctx->crc_error_ctx) - (uint32_t)report_error_ctx), &crc_val );
     //Read report_error_ctx and check if CRC is correct for report_error_ctx
-    if(report_error_ctx->crc_error_ctx == crc_val) {
+    if((report_error_ctx->crc_error_ctx == crc_val) && (report_error_ctx->is_error_processed == 0)) {
         is_reboot_error_valid = true;
 #if defined(MBED_CONF_PLATFORM_REBOOT_CRASH_REPORT_ENABLED) && !defined(NDEBUG)        
         //Report the error info
         mbed_error_printf("\n== Your last reboot was triggered by an error, below is the error information ==");
-        ERROR_REPORT( report_error_ctx, "" );
+        ERROR_REPORT( report_error_ctx, "System rebooted due to fatal error" );
 #endif  
         //Call the mbed_error_reboot_callback, this enables applications to do some handling before we do the handling
         mbed_error_reboot_callback(report_error_ctx);
         if( report_error_ctx->error_reboot_count > MBED_CONF_PLATFORM_ERROR_REBOOT_MAX ) {
             //We have rebooted more than enough, hold the system here.
-            mbed_error_printf("\n== Reboot count exceeded maximum, system halting ==\n");
+            mbed_error_printf("\n== Reboot count(=%d) exceeded maximum, system halting ==\n", report_error_ctx->error_reboot_count);
             mbed_halt_system();
         }
+        report_error_ctx->is_error_processed = 1;//Set the flag that we already processed this error
+        compute_mbed_crc( crc_obj, report_error_ctx, ((uint32_t)&(report_error_ctx->crc_error_ctx) - (uint32_t)report_error_ctx), &crc_val );
+        report_error_ctx->crc_error_ctx = crc_val;
     }
 #endif
     
@@ -266,6 +269,7 @@ MBED_WEAK mbed_error_status_t mbed_error(mbed_error_status_t error_status, const
     } else {
         last_error_ctx.error_reboot_count = 1;
     }
+    last_error_ctx.is_error_processed = 0;//Set the flag that this is a new error
     //Update the struct with crc
     compute_mbed_crc( crc_obj, &last_error_ctx, ((uint32_t)&(last_error_ctx.crc_error_ctx) - (uint32_t)&last_error_ctx), &last_error_ctx.crc_error_ctx );
     memcpy(report_error_ctx, &last_error_ctx, sizeof(mbed_error_ctx));

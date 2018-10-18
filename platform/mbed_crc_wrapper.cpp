@@ -21,20 +21,21 @@
  */
  
 #include "platform/mbed_retarget.h"
+#include "hal/crc_api.h"
 #include "mbed_crc_wrapper.h"
 #include "MbedCRC.h"
 
-void *create_mbed_crc(void) {
-    mbed::MbedCRC<POLY_32BIT_ANSI, 32> *crc_obj = new mbed::MbedCRC<POLY_32BIT_ANSI, 32> ();
+void *create_mbed_crc(crc_polynomial_t polynomial) {
+    mbed::MbedCRC<POLY_32BIT_REV_ANSI, 32> *crc_obj = new mbed::MbedCRC<POLY_32BIT_REV_ANSI, 32> ();
     return (void *)crc_obj;
 }
 
 int32_t compute_mbed_crc(void *crc_obj, void *data, int datalen, uint32_t *crc) {
-    return (static_cast<mbed::MbedCRC<POLY_32BIT_ANSI, 32> *>(crc_obj))->compute(data, datalen, crc);
+    return (static_cast<mbed::MbedCRC<POLY_32BIT_REV_ANSI, 32> *>(crc_obj))->compute(data, datalen, crc);
 }
 
 void delete_mbed_crc(void *crc_obj) {
-    delete (static_cast<mbed::MbedCRC<POLY_32BIT_ANSI, 32> *>(crc_obj));
+    delete (static_cast<mbed::MbedCRC<POLY_32BIT_REV_ANSI, 32> *>(crc_obj));
 }
     
 /** @}*/
