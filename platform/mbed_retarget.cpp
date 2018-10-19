@@ -352,9 +352,9 @@ short CircularBufferFile::poll(short events) const
         revents |= POLLIN;
     }
 
-    if (!_buffer.full()) {
+    //if (!_buffer.full()) {
         revents |= POLLOUT;
-    }
+    //}
 
     /*TODO Handle other event types */
 
