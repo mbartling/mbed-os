@@ -205,6 +205,52 @@ short DirectSerial::poll(short events) const
 }
 #endif
 
+#ifndef CIRCULAR_BUFFER_FILE_DEPTH
+#define CIRCULAR_BUFFER_FILE_DEPTH 512
+#endif
+
+class CircularBufferFile : public FileHandle {
+public:
+    virtual ssize_t write(const void *buffer, size_t size);
+    virtual ssize_t read(void *buffer, size_t size);
+    virtual off_t seek(off_t offset, int whence = SEEK_SET)
+    {
+        return -ESPIPE;
+
+    }
+    virtual off_t size()
+    {
+        return _buffer.size();
+    }
+    virtual int isatty()
+    {
+        return false;
+    }
+    virtual int close()
+    {
+        return 0;
+    }
+private:
+    CircularBuffer<uint8_t, CIRCULAR_BUFFER_FILE_DEPTH> _buffer;
+}
+ssize_t CircularBufferFile::write(const void* buffer, size_t size) {
+    const uint8_t* b = static_cast<uint8_t*>(buffer);
+    for ( size_t i = 0; i < size; i++){
+        _buffer.push(b[i]);
+    }
+    return size % _buffer.size();
+
+}
+// Read is a forward iterator stream
+ssize_t CircularBufferFile::read(void *buffer, size_t size){
+    uint8_t* b = static_cast<uint8_t*>(buffer);
+    size_t i = 0;
+    while(i < size && _buffer.pop(b[i++]))
+    {
+    }
+    return i;
+}
+
 class Sink : public FileHandle {
 public:
     virtual ssize_t write(const void *buffer, size_t size);
@@ -268,6 +314,8 @@ static FileHandle *default_console()
 #  else
     static DirectSerial console(STDIO_UART_TX, STDIO_UART_RX, MBED_CONF_PLATFORM_STDIO_BAUD_RATE);
 #  endif
+# elif SOFT_FILE_BUFFER
+    static CircularBufferFile console;
 #else // DEVICE_SERIAL
     static Sink console;
 #endif
