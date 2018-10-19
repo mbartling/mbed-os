@@ -110,7 +110,12 @@
         "error-reboot-max": {
             "help": "Maximum number of auto reboots permitted when an error happens.",
             "value": 10
+        },
+        "soft-file-buffer": {
+            "help": "Use circular file buffer instead of serial",
+            "value": false
         }
+
     },
     "target_overrides": {
         "EFM32": {

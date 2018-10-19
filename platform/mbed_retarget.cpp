@@ -43,6 +43,14 @@
 
 static SingletonPtr<PlatformMutex> _mutex;
 
+// For CircularFile
+#if MBED_CONF_RTOS_PRESENT
+#include "rtos/Thread.h"
+#else
+#include "platform/mbed_wait_api.h"
+#endif
+//End
+
 #if defined(__ARMCC_VERSION)
 #   if __ARMCC_VERSION >= 6010050
 #      include <arm_compat.h>
@@ -211,8 +219,10 @@ short DirectSerial::poll(short events) const
 
 class CircularBufferFile : public FileHandle {
 public:
+    virtual ~CircularBufferFile();
     virtual ssize_t write(const void *buffer, size_t size);
     virtual ssize_t read(void *buffer, size_t size);
+    virtual short poll(short events) const;
     virtual off_t seek(off_t offset, int whence = SEEK_SET)
     {
         return -ESPIPE;
@@ -230,25 +240,112 @@ public:
     {
         return 0;
     }
+    virtual void sigio(Callback<void()> func);
+private:
+    /** Acquire mutex */
+    virtual void api_lock(void);
+
+    /** Release mutex */
+    virtual void api_unlock(void);
+    
+    void wait_ms(uint32_t millisec);
 private:
     CircularBuffer<uint8_t, CIRCULAR_BUFFER_FILE_DEPTH> _buffer;
+    Callback<void()> _sigio_cb;
+    PlatformMutex _mutex;
+};
+
+CircularBufferFile::~CircularBufferFile(){}
+void CircularBufferFile::api_lock(void)
+{
+    _mutex.lock();
 }
+
+void CircularBufferFile::api_unlock(void)
+{
+    _mutex.unlock();
+}
+
 ssize_t CircularBufferFile::write(const void* buffer, size_t size) {
-    const uint8_t* b = static_cast<uint8_t*>(buffer);
+    const uint8_t* b = static_cast<const uint8_t*>(buffer);
+    if (size == 0) {
+        return 0;
+    }
+    api_lock();
     for ( size_t i = 0; i < size; i++){
         _buffer.push(b[i]);
     }
-    return size % _buffer.size();
+    api_unlock();
+    size_t data_written = size % _buffer.size();
+    return data_written != 0 ? (ssize_t) data_written : (ssize_t) - EAGAIN;
 
 }
 // Read is a forward iterator stream
 ssize_t CircularBufferFile::read(void *buffer, size_t size){
     uint8_t* b = static_cast<uint8_t*>(buffer);
     size_t i = 0;
+    if (size == 0) {
+        return 0;
+    }
+
+    api_lock();
+    while (_buffer.empty()) {
+        /*if (!_blocking) {
+            api_unlock();
+            return -EAGAIN;
+        }*/
+        api_unlock();
+        wait_ms(1);  // XXX todo - proper wait, WFE for non-rtos ?
+        api_lock();
+    }
     while(i < size && _buffer.pop(b[i++]))
     {
     }
+    api_unlock();
     return i;
+}
+void CircularBufferFile::sigio(Callback<void()> func)
+{
+    core_util_critical_section_enter();
+    _sigio_cb = func;
+    if (_sigio_cb) {
+        short current_events = poll(0x7FFF);
+        if (current_events) {
+            _sigio_cb();
+        }
+    }
+    core_util_critical_section_exit();
+}
+
+short CircularBufferFile::poll(short events) const
+{
+
+    short revents = 0;
+    /* Check the Circular Buffer if space available for writing out */
+
+
+    if (!_buffer.empty()) {
+        revents |= POLLIN;
+    }
+
+    if (!_buffer.full()) {
+        revents |= POLLOUT;
+    }
+
+    /*TODO Handle other event types */
+
+    return revents;
+}
+void CircularBufferFile::wait_ms(uint32_t millisec)
+{
+    /* wait_ms implementation for RTOS spins until exact microseconds - we
+     * want to just sleep until next tick.
+     */
+#if MBED_CONF_RTOS_PRESENT
+    rtos::Thread::wait(millisec);
+#else
+    ::wait_ms(millisec);
+#endif
 }
 
 class Sink : public FileHandle {
@@ -301,7 +398,9 @@ MBED_WEAK FileHandle *mbed::mbed_override_console(int fd)
 
 static FileHandle *default_console()
 {
-#if DEVICE_SERIAL
+# if MBED_CONF_PLATFORM_SOFT_FILE_BUFFER
+    static CircularBufferFile console;
+# elif DEVICE_SERIAL
 #  if MBED_CONF_PLATFORM_STDIO_BUFFERED_SERIAL
     static UARTSerial console(STDIO_UART_TX, STDIO_UART_RX, MBED_CONF_PLATFORM_STDIO_BAUD_RATE);
 #   if   CONSOLE_FLOWCONTROL == CONSOLE_FLOWCONTROL_RTS
@@ -314,8 +413,6 @@ static FileHandle *default_console()
 #  else
     static DirectSerial console(STDIO_UART_TX, STDIO_UART_RX, MBED_CONF_PLATFORM_STDIO_BAUD_RATE);
 #  endif
-# elif SOFT_FILE_BUFFER
-    static CircularBufferFile console;
 #else // DEVICE_SERIAL
     static Sink console;
 #endif
