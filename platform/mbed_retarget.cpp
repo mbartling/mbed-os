@@ -266,6 +266,7 @@ void CircularBufferFile::api_unlock(void)
     _mutex.unlock();
 }
 
+//Should this block?
 ssize_t CircularBufferFile::write(const void* buffer, size_t size) {
     static volatile uint16_t seqno = 0;
     const char* b = static_cast<const char*>(buffer);
